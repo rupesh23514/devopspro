@@ -1,0 +1,68 @@
+# ============================================
+# NetWeave — Prometheus Configuration
+# ============================================
+# Prometheus scrapes metrics from services at /metrics endpoints
+# Services are discovered via Docker DNS on monitor-net
+
+global:
+  scrape_interval: 15s        # How often to collect metrics
+  evaluation_interval: 15s    # How often to evaluate alerting rules
+  scrape_timeout: 10s
+
+# ============================================================
+# Scrape Targets
+# ============================================================
+scrape_configs:
+
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          network: 'monitor-net'
+
+  # cAdvisor — Container metrics (CPU, RAM, Network I/O)
+  - job_name: 'cadvisor'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'cadvisor'
+          network: 'monitor-net'
+    metric_relabel_configs:
+      # Extract container name from Docker compose label
+      - source_labels: [container_label_com_docker_compose_service]
+        target_label: name
+        regex: '(.+)'
+        replacement: '$1'
+
+  # API Gateway metrics
+  - job_name: 'api-gateway'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['api-gateway:3000']
+        labels:
+          service: 'api-gateway'
+          network: 'backend-net'
+    metrics_path: '/metrics'
+
+  # User Service metrics
+  - job_name: 'user-service'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['user-service:5000']
+        labels:
+          service: 'user-service'
+          network: 'backend-net'
+    metrics_path: '/metrics'
+
+  # Order Service metrics
+  - job_name: 'order-service'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['order-service:4000']
+        labels:
+          service: 'order-service'
+          network: 'backend-net'
+    metrics_path: '/metrics'

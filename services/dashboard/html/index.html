@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetWeave — Network Testing Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="bg-dots"></div>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <div class="logo">🐳</div>
+            <div>
+                <h1 class="header-title">NetWeave Network Tester</h1>
+                <p class="header-sub">Interactive Docker Network Connectivity Testing • Real-time</p>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="live-indicator">
+                <span class="live-dot"></span>
+                LIVE
+            </div>
+            <span class="timestamp" id="timestamp"></span>
+        </div>
+    </header>
+
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+        <div class="stat-item">
+            <span class="stat-value" id="total-containers">11</span>
+            <span class="stat-label">Containers</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-value">4</span>
+            <span class="stat-label">Networks</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-value" id="healthy-count">—</span>
+            <span class="stat-label">Healthy</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-value" id="tests-passed">—</span>
+            <span class="stat-label">Tests Passed</span>
+        </div>
+    </div>
+
+    <!-- ==================== CONNECTION TESTER ==================== -->
+    <div class="tester-section">
+        <div class="section-header">
+            <h2 class="section-title">🧪 Network Connection Tester</h2>
+            <p class="section-desc">Select two containers and test if they can communicate. See real results with network path explanations.</p>
+        </div>
+
+        <!-- Tester Controls -->
+        <div class="tester-controls">
+            <div class="select-group">
+                <label class="select-label">FROM Container</label>
+                <div class="custom-select">
+                    <select id="from-container">
+                        <option value="">Select source...</option>
+                        <option value="nginx">🌐 Nginx (frontend-net)</option>
+                        <option value="api-gateway">🔀 API Gateway (frontend + backend + monitor)</option>
+                        <option value="user-service">👤 User Service (backend + db + monitor)</option>
+                        <option value="order-service">📦 Order Service (backend + db + monitor)</option>
+                        <option value="users-db">🗄️ Users DB (db-net only)</option>
+                        <option value="orders-db">🗄️ Orders DB (db-net only)</option>
+                        <option value="redis-cache">⚡ Redis Cache (db-net only)</option>
+                        <option value="prometheus">📈 Prometheus (monitor + backend)</option>
+                        <option value="grafana">📊 Grafana (monitor-net only)</option>
+                        <option value="cadvisor">📉 cAdvisor (monitor-net only)</option>
+                        <option value="dashboard">🗺️ Dashboard (monitor-net only)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="arrow-icon" id="connection-arrow">
+                <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                    <path d="M8 20H32M32 20L24 12M32 20L24 28" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+
+            <div class="select-group">
+                <label class="select-label">TO Container</label>
+                <div class="custom-select">
+                    <select id="to-container">
+                        <option value="">Select destination...</option>
+                        <option value="nginx">🌐 Nginx (frontend-net)</option>
+                        <option value="api-gateway">🔀 API Gateway (frontend + backend + monitor)</option>
+                        <option value="user-service">👤 User Service (backend + db + monitor)</option>
+                        <option value="order-service">📦 Order Service (backend + db + monitor)</option>
+                        <option value="users-db">🗄️ Users DB (db-net only)</option>
+                        <option value="orders-db">🗄️ Orders DB (db-net only)</option>
+                        <option value="redis-cache">⚡ Redis Cache (db-net only)</option>
+                        <option value="prometheus">📈 Prometheus (monitor + backend)</option>
+                        <option value="grafana">📊 Grafana (monitor-net only)</option>
+                        <option value="cadvisor">📉 cAdvisor (monitor-net only)</option>
+                        <option value="dashboard">🗺️ Dashboard (monitor-net only)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="tester-buttons">
+            <button class="btn btn-primary" id="btn-test" onclick="testConnection()">
+                <span class="btn-icon">🔌</span>
+                Test Connection
+            </button>
+            <button class="btn btn-secondary" id="btn-test-all" onclick="runAllTests()">
+                <span class="btn-icon">🚀</span>
+                Run All Tests
+            </button>
+        </div>
+
+        <!-- Single Test Result -->
+        <div class="result-panel" id="result-panel" style="display:none;">
+            <div class="result-header" id="result-header">
+                <span class="result-icon" id="result-icon"></span>
+                <span class="result-title" id="result-title"></span>
+            </div>
+            <div class="result-body">
+                <div class="result-network-visual" id="result-visual"></div>
+                <div class="result-details" id="result-details"></div>
+                <div class="result-security" id="result-security" style="display:none;"></div>
+                <div class="result-live" id="result-live" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- All Tests Results -->
+        <div class="all-tests-panel" id="all-tests-panel" style="display:none;">
+            <div class="all-tests-header">
+                <div class="all-tests-summary" id="all-tests-summary"></div>
+            </div>
+            <div class="all-tests-tabs">
+                <button class="tab-btn active" onclick="filterTests('all')">All</button>
+                <button class="tab-btn" onclick="filterTests('connectivity')">✅ Connectivity</button>
+                <button class="tab-btn" onclick="filterTests('isolation')">🔒 Isolation</button>
+            </div>
+            <div class="all-tests-list" id="all-tests-list"></div>
+        </div>
+    </div>
+
+    <!-- ==================== LIVE DATA TESTING ==================== -->
+    <div class="data-section">
+        <div class="section-header">
+            <h2 class="section-title">⚡ Live Data Testing — Prove Real Connectivity</h2>
+            <p class="section-desc">Create users and orders that flow through the entire container chain. This proves containers are actually communicating with real data.</p>
+        </div>
+
+        <div class="data-grid">
+            <!-- Create User Card -->
+            <div class="data-card">
+                <div class="data-card-header create-header">
+                    <span class="data-card-icon">👤</span>
+                    <div>
+                        <h3 class="data-card-title">Create User</h3>
+                        <p class="data-card-path">Nginx → API Gateway → User Service → MongoDB</p>
+                    </div>
+                </div>
+                <div class="data-card-body">
+                    <div class="form-group">
+                        <label class="form-label">Name</label>
+                        <input type="text" class="form-input" id="user-name" placeholder="e.g. John Doe">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-input" id="user-email" placeholder="e.g. john@netweave.io">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Role</label>
+                        <select class="form-input" id="user-role">
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-create" id="btn-create-user" onclick="createUser()">
+                        <span class="btn-icon">➕</span> Create User
+                    </button>
+                </div>
+                <div class="data-card-result" id="create-user-result" style="display:none;"></div>
+            </div>
+
+            <!-- Create Order Card -->
+            <div class="data-card">
+                <div class="data-card-header order-header">
+                    <span class="data-card-icon">📦</span>
+                    <div>
+                        <h3 class="data-card-title">Create Order</h3>
+                        <p class="data-card-path">Nginx → API GW → Order Svc → User Svc (validate) → MongoDB</p>
+                    </div>
+                </div>
+                <div class="data-card-body">
+                    <div class="form-group">
+                        <label class="form-label">Product</label>
+                        <input type="text" class="form-input" id="order-product" placeholder="e.g. Docker Handbook">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Quantity</label>
+                            <input type="number" class="form-input" id="order-qty" value="1" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Price ($)</label>
+                            <input type="number" class="form-input" id="order-price" value="29.99" step="0.01">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">User Email (validated via User Service)</label>
+                        <input type="email" class="form-input" id="order-email" placeholder="e.g. alice@netweave.io">
+                    </div>
+                    <button class="btn btn-order" id="btn-create-order" onclick="createOrder()">
+                        <span class="btn-icon">📦</span> Create Order
+                    </button>
+                </div>
+                <div class="data-card-result" id="create-order-result" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- View Data Section -->
+        <div class="view-data-section">
+            <div class="view-data-buttons">
+                <button class="btn btn-view" onclick="viewUsers()">
+                    <span class="btn-icon">👤</span> View All Users
+                </button>
+                <button class="btn btn-view" onclick="viewOrders()">
+                    <span class="btn-icon">📦</span> View All Orders
+                </button>
+            </div>
+            <div class="view-data-result" id="view-data-result" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- ==================== NETWORK TOPOLOGY ==================== -->
+    <div class="topology-container">
+        <div class="section-header">
+            <h2 class="section-title">🗺️ Network Topology</h2>
+            <p class="section-desc">Click any container to auto-fill the tester above</p>
+        </div>
+        
+        <div class="network-zone frontend-zone">
+            <div class="zone-label">🌐 frontend-net <span class="subnet">172.20.0.0/16</span></div>
+            <div class="zone-nodes">
+                <div class="node clickable-node" data-service="nginx" onclick="selectNode(this, 'nginx')">
+                    <div class="node-status" id="status-nginx"></div>
+                    <div class="node-icon">🌐</div>
+                    <div class="node-name">Nginx</div>
+                    <div class="node-port">:80</div>
+                </div>
+                <div class="node-connector"></div>
+                <div class="node clickable-node" data-service="api-gateway" onclick="selectNode(this, 'api-gateway')">
+                    <div class="node-status" id="status-api-gateway"></div>
+                    <div class="node-icon">🔀</div>
+                    <div class="node-name">API Gateway</div>
+                    <div class="node-port">:3000</div>
+                    <div class="node-badge bridge-badge">Bridge</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="network-arrow">▼ backend-net routes ▼</div>
+
+        <div class="network-zone backend-zone">
+            <div class="zone-label">⚙️ backend-net <span class="subnet">172.21.0.0/16</span></div>
+            <div class="zone-nodes">
+                <div class="node clickable-node" data-service="user-service" onclick="selectNode(this, 'user-service')">
+                    <div class="node-status" id="status-user-service"></div>
+                    <div class="node-icon">👤</div>
+                    <div class="node-name">User Service</div>
+                    <div class="node-tech">Python/Flask</div>
+                    <div class="node-badge bridge-badge">Bridge</div>
+                </div>
+                <div class="node-connector"></div>
+                <div class="node clickable-node" data-service="order-service" onclick="selectNode(this, 'order-service')">
+                    <div class="node-status" id="status-order-service"></div>
+                    <div class="node-icon">📦</div>
+                    <div class="node-name">Order Service</div>
+                    <div class="node-tech">Node.js</div>
+                    <div class="node-badge bridge-badge">Bridge</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="network-arrow">▼ db-net access ▼</div>
+
+        <div class="network-zone db-zone">
+            <div class="zone-label">🔒 db-net <span class="subnet">172.22.0.0/16</span> <span class="internal-badge">INTERNAL — No Internet</span></div>
+            <div class="zone-nodes">
+                <div class="node clickable-node" data-service="users-db" onclick="selectNode(this, 'users-db')">
+                    <div class="node-status healthy" id="status-users-db"></div>
+                    <div class="node-icon">🗄️</div>
+                    <div class="node-name">Users DB</div>
+                    <div class="node-tech">MongoDB 7</div>
+                </div>
+                <div class="node clickable-node" data-service="orders-db" onclick="selectNode(this, 'orders-db')">
+                    <div class="node-status healthy" id="status-orders-db"></div>
+                    <div class="node-icon">🗄️</div>
+                    <div class="node-name">Orders DB</div>
+                    <div class="node-tech">MongoDB 7</div>
+                </div>
+                <div class="node clickable-node" data-service="redis-cache" onclick="selectNode(this, 'redis-cache')">
+                    <div class="node-status healthy" id="status-redis"></div>
+                    <div class="node-icon">⚡</div>
+                    <div class="node-name">Redis Cache</div>
+                    <div class="node-tech">Redis 7</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="network-zone monitor-zone">
+            <div class="zone-label">📊 monitor-net <span class="subnet">172.23.0.0/16</span></div>
+            <div class="zone-nodes">
+                <div class="node clickable-node" data-service="prometheus" onclick="selectNode(this, 'prometheus')">
+                    <div class="node-status healthy" id="status-prometheus"></div>
+                    <div class="node-icon">📈</div>
+                    <div class="node-name">Prometheus</div>
+                    <div class="node-port">:9090</div>
+                </div>
+                <div class="node-connector"></div>
+                <div class="node clickable-node" data-service="grafana" onclick="selectNode(this, 'grafana')">
+                    <div class="node-status healthy" id="status-grafana"></div>
+                    <div class="node-icon">📊</div>
+                    <div class="node-name">Grafana</div>
+                    <div class="node-port">:3001</div>
+                </div>
+                <div class="node-connector"></div>
+                <div class="node clickable-node" data-service="cadvisor" onclick="selectNode(this, 'cadvisor')">
+                    <div class="node-status healthy" id="status-cadvisor"></div>
+                    <div class="node-icon">📉</div>
+                    <div class="node-name">cAdvisor</div>
+                    <div class="node-port">:8081</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Isolation Matrix -->
+    <div class="matrix-section">
+        <h2 class="section-title">🔐 Network Isolation Matrix</h2>
+        <p class="section-desc">Shows which services can communicate. ✅ = Connected  ❌ = Isolated (by design)</p>
+        <div class="matrix-scroll">
+            <table class="matrix-table" id="isolation-matrix">
+                <thead>
+                    <tr>
+                        <th></th><th>Nginx</th><th>API GW</th><th>User Svc</th><th>Order Svc</th><th>Users DB</th><th>Orders DB</th><th>Redis</th><th>Prometheus</th><th>Grafana</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td class="row-header">Nginx</td>        <td class="self">—</td><td class="yes">✅</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td></tr>
+                    <tr><td class="row-header">API Gateway</td>  <td class="yes">✅</td><td class="self">—</td><td class="yes">✅</td><td class="yes">✅</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="yes">✅</td><td class="no">❌</td></tr>
+                    <tr><td class="row-header">User Service</td> <td class="no">❌</td><td class="yes">✅</td><td class="self">—</td><td class="yes">✅</td><td class="yes">✅</td><td class="no">❌</td><td class="yes">✅</td><td class="yes">✅</td><td class="no">❌</td></tr>
+                    <tr><td class="row-header">Order Service</td><td class="no">❌</td><td class="yes">✅</td><td class="yes">✅</td><td class="self">—</td><td class="no">❌</td><td class="yes">✅</td><td class="yes">✅</td><td class="yes">✅</td><td class="no">❌</td></tr>
+                    <tr><td class="row-header">Users DB</td>     <td class="no">❌</td><td class="no">❌</td><td class="yes">✅</td><td class="no">❌</td><td class="self">—</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td></tr>
+                    <tr><td class="row-header">Orders DB</td>    <td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="yes">✅</td><td class="no">❌</td><td class="self">—</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td></tr>
+                    <tr><td class="row-header">Redis</td>        <td class="no">❌</td><td class="no">❌</td><td class="yes">✅</td><td class="yes">✅</td><td class="no">❌</td><td class="no">❌</td><td class="self">—</td><td class="no">❌</td><td class="no">❌</td></tr>
+                    <tr><td class="row-header">Prometheus</td>   <td class="no">❌</td><td class="yes">✅</td><td class="yes">✅</td><td class="yes">✅</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="self">—</td><td class="yes">✅</td></tr>
+                    <tr><td class="row-header">Grafana</td>      <td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td><td class="yes">✅</td><td class="self">—</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Quick Links -->
+    <div class="links-section">
+        <h2 class="section-title">🔗 Quick Access</h2>
+        <div class="links-grid">
+            <a href="http://localhost" target="_blank" class="quick-link"><span>🌐</span> Landing Page<small>:80</small></a>
+            <a href="http://localhost/api/health" target="_blank" class="quick-link"><span>💚</span> API Health<small>/api/health</small></a>
+            <a href="http://localhost/api/test-connectivity" target="_blank" class="quick-link"><span>🧪</span> Test API<small>/api/test-connectivity</small></a>
+            <a href="http://localhost:9090" target="_blank" class="quick-link"><span>📈</span> Prometheus<small>:9090</small></a>
+            <a href="http://localhost:3001" target="_blank" class="quick-link"><span>📊</span> Grafana<small>:3001</small></a>
+            <a href="http://localhost:8081" target="_blank" class="quick-link"><span>📉</span> cAdvisor<small>:8081</small></a>
+        </div>
+    </div>
+
+    <footer class="footer">
+        NetWeave — Docker Networking Multi-Container Platform &nbsp;•&nbsp; DevOps Portfolio Project
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

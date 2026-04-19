@@ -1,0 +1,16 @@
+# ============================================
+# Grafana — Auto-provision dashboards
+# ============================================
+apiVersion: 1
+
+providers:
+  - name: 'NetWeave Dashboards'
+    orgId: 1
+    folder: 'NetWeave'
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

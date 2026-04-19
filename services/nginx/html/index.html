@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetWeave — Docker Networking Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0a0a1a;
+            color: #e0e0e0;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated background */
+        .bg-grid {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-image:
+                linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Hero Section */
+        .hero {
+            text-align: center;
+            padding: 4rem 0;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: #818cf8;
+            padding: 0.4rem 1.2rem;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            margin-bottom: 1.5rem;
+            animation: fadeInUp 0.6s ease;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #818cf8, #6366f1, #a78bfa, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 1rem;
+            animation: fadeInUp 0.8s ease;
+        }
+
+        .hero p {
+            font-size: 1.15rem;
+            color: #9ca3af;
+            max-width: 650px;
+            margin: 0 auto 2rem;
+            line-height: 1.7;
+            animation: fadeInUp 1s ease;
+        }
+
+        /* Status Cards */
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin: 3rem 0;
+        }
+
+        .status-card {
+            background: rgba(17, 17, 34, 0.8);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            border-radius: 16px;
+            padding: 1.8rem;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            animation: fadeInUp 1.2s ease;
+        }
+
+        .status-card:hover {
+            border-color: rgba(99, 102, 241, 0.4);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.1);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin-bottom: 1rem;
+        }
+
+        .card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .card-icon.green { background: rgba(34, 197, 94, 0.15); }
+        .card-icon.blue { background: rgba(59, 130, 246, 0.15); }
+        .card-icon.purple { background: rgba(168, 85, 247, 0.15); }
+        .card-icon.orange { background: rgba(249, 115, 22, 0.15); }
+
+        .card-title {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #f0f0f0;
+        }
+
+        .card-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 0.3rem;
+        }
+
+        .card-label {
+            font-size: 0.85rem;
+            color: #6b7280;
+        }
+
+        /* Service Health Table */
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 3rem 0 1.5rem;
+            color: #f0f0f0;
+        }
+
+        .health-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(17, 17, 34, 0.8);
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid rgba(99, 102, 241, 0.15);
+        }
+
+        .health-table th {
+            background: rgba(99, 102, 241, 0.1);
+            padding: 1rem 1.2rem;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: #818cf8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .health-table td {
+            padding: 0.9rem 1.2rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 0.95rem;
+        }
+
+        .health-table tr:hover td {
+            background: rgba(99, 102, 241, 0.04);
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.healthy { background: #22c55e; box-shadow: 0 0 8px rgba(34, 197, 94, 0.5); }
+        .status-dot.loading { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.5); }
+
+        .network-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin: 0.1rem;
+        }
+
+        .net-frontend { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+        .net-backend { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+        .net-db { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
+        .net-monitor { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
+
+        /* Links Section */
+        .links-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+
+        .link-card {
+            display: block;
+            background: rgba(17, 17, 34, 0.8);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            border-radius: 12px;
+            padding: 1.2rem;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .link-card:hover {
+            border-color: #6366f1;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(99, 102, 241, 0.15);
+        }
+
+        .link-card .link-title {
+            color: #f0f0f0;
+            font-weight: 600;
+            margin-bottom: 0.3rem;
+        }
+
+        .link-card .link-url {
+            color: #818cf8;
+            font-size: 0.85rem;
+            font-family: monospace;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 3rem 0 2rem;
+            color: #4b5563;
+            font-size: 0.85rem;
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+    <div class="container">
+        <div class="hero">
+            <div class="hero-badge">🐳 Docker Networking Project</div>
+            <h1>NetWeave</h1>
+            <p>A multi-container microservices platform demonstrating Docker network segmentation, DNS-based service discovery, and real-time monitoring with Prometheus & Grafana.</p>
+        </div>
+
+        <div class="status-grid">
+            <div class="status-card">
+                <div class="card-header">
+                    <div class="card-icon green">🐳</div>
+                    <div class="card-title">Containers</div>
+                </div>
+                <div class="card-value" id="container-count">11</div>
+                <div class="card-label">Running Services</div>
+            </div>
+            <div class="status-card">
+                <div class="card-header">
+                    <div class="card-icon blue">🌐</div>
+                    <div class="card-title">Networks</div>
+                </div>
+                <div class="card-value">5</div>
+                <div class="card-label">Isolated Docker Networks</div>
+            </div>
+            <div class="status-card">
+                <div class="card-header">
+                    <div class="card-icon purple">📊</div>
+                    <div class="card-title">Monitoring</div>
+                </div>
+                <div class="card-value">Live</div>
+                <div class="card-label">Prometheus + Grafana</div>
+            </div>
+            <div class="status-card">
+                <div class="card-header">
+                    <div class="card-icon orange">🔒</div>
+                    <div class="card-title">Security</div>
+                </div>
+                <div class="card-value">Isolated</div>
+                <div class="card-label">DB Network — No Internet</div>
+            </div>
+        </div>
+
+        <h2 class="section-title">📡 Service Health</h2>
+        <table class="health-table">
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>Status</th>
+                    <th>Technology</th>
+                    <th>Networks</th>
+                </tr>
+            </thead>
+            <tbody id="health-body">
+                <tr>
+                    <td>🌐 Nginx</td>
+                    <td><span class="status-dot loading"></span>Checking...</td>
+                    <td>Nginx Alpine</td>
+                    <td><span class="network-badge net-frontend">frontend-net</span></td>
+                </tr>
+                <tr>
+                    <td>🔀 API Gateway</td>
+                    <td><span class="status-dot loading"></span>Checking...</td>
+                    <td>Node.js / Express</td>
+                    <td>
+                        <span class="network-badge net-frontend">frontend-net</span>
+                        <span class="network-badge net-backend">backend-net</span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>👤 User Service</td>
+                    <td><span class="status-dot loading"></span>Checking...</td>
+                    <td>Python / Flask</td>
+                    <td>
+                        <span class="network-badge net-backend">backend-net</span>
+                        <span class="network-badge net-db">db-net</span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>📦 Order Service</td>
+                    <td><span class="status-dot loading"></span>Checking...</td>
+                    <td>Node.js / Express</td>
+                    <td>
+                        <span class="network-badge net-backend">backend-net</span>
+                        <span class="network-badge net-db">db-net</span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>🗄️ Users DB</td>
+                    <td><span class="status-dot healthy"></span>Running</td>
+                    <td>MongoDB 7</td>
+                    <td><span class="network-badge net-db">db-net 🔒</span></td>
+                </tr>
+                <tr>
+                    <td>🗄️ Orders DB</td>
+                    <td><span class="status-dot healthy"></span>Running</td>
+                    <td>MongoDB 7</td>
+                    <td><span class="network-badge net-db">db-net 🔒</span></td>
+                </tr>
+                <tr>
+                    <td>⚡ Redis Cache</td>
+                    <td><span class="status-dot healthy"></span>Running</td>
+                    <td>Redis 7 Alpine</td>
+                    <td><span class="network-badge net-db">db-net 🔒</span></td>
+                </tr>
+                <tr>
+                    <td>📈 Prometheus</td>
+                    <td><span class="status-dot healthy"></span>Running</td>
+                    <td>Prometheus</td>
+                    <td><span class="network-badge net-monitor">monitor-net</span></td>
+                </tr>
+                <tr>
+                    <td>📊 Grafana</td>
+                    <td><span class="status-dot healthy"></span>Running</td>
+                    <td>Grafana OSS</td>
+                    <td><span class="network-badge net-monitor">monitor-net</span></td>
+                </tr>
+                <tr>
+                    <td>📉 cAdvisor</td>
+                    <td><span class="status-dot healthy"></span>Running</td>
+                    <td>cAdvisor</td>
+                    <td><span class="network-badge net-monitor">monitor-net</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2 class="section-title">🔗 Quick Links</h2>
+        <div class="links-grid">
+            <a href="/api/health" class="link-card">
+                <div class="link-title">🔗 API Health</div>
+                <div class="link-url">localhost/api/health</div>
+            </a>
+            <a href="/api/users" class="link-card">
+                <div class="link-title">👤 Users API</div>
+                <div class="link-url">localhost/api/users</div>
+            </a>
+            <a href="/api/orders" class="link-card">
+                <div class="link-title">📦 Orders API</div>
+                <div class="link-url">localhost/api/orders</div>
+            </a>
+            <a href="/api/network-info" class="link-card">
+                <div class="link-title">🌐 Network Info</div>
+                <div class="link-url">localhost/api/network-info</div>
+            </a>
+            <a href="http://localhost:8080" class="link-card" target="_blank">
+                <div class="link-title">🗺️ Network Dashboard</div>
+                <div class="link-url">localhost:8080</div>
+            </a>
+            <a href="http://localhost:3001" class="link-card" target="_blank">
+                <div class="link-title">📊 Grafana</div>
+                <div class="link-url">localhost:3001</div>
+            </a>
+            <a href="http://localhost:9090" class="link-card" target="_blank">
+                <div class="link-title">📈 Prometheus</div>
+                <div class="link-url">localhost:9090</div>
+            </a>
+            <a href="http://localhost:8081" class="link-card" target="_blank">
+                <div class="link-title">📉 cAdvisor</div>
+                <div class="link-url">localhost:8081</div>
+            </a>
+        </div>
+
+        <div class="footer">
+            NetWeave — Docker Networking Multi-Container Platform &nbsp;|&nbsp; DevOps Project
+        </div>
+    </div>
+
+    <script>
+        // Check API Gateway health and update UI
+        async function checkHealth() {
+            try {
+                const res = await fetch('/api/health');
+                const data = await res.json();
+                if (data.status === 'healthy') {
+                    const rows = document.querySelectorAll('#health-body tr');
+                    rows.forEach(row => {
+                        const statusCell = row.cells[1];
+                        statusCell.innerHTML = '<span class="status-dot healthy"></span>Healthy';
+                    });
+                }
+            } catch (e) {
+                console.log('API not ready yet, retrying...');
+            }
+        }
+
+        checkHealth();
+        setInterval(checkHealth, 10000);
+    </script>
+</body>
+</html>

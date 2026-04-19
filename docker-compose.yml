@@ -1,0 +1,454 @@
+###############################################################################
+#  NetWeave — Docker Networking Multi-Container Platform
+#  
+#  Architecture: 11 services across 5 isolated Docker networks
+#  Run: docker-compose up -d --build
+###############################################################################
+
+# ============================================================================
+# NETWORKS — 5 isolated networks with custom subnets
+# ============================================================================
+networks:
+  frontend-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+    labels:
+      - "netweave.network=frontend"
+      - "netweave.description=Public-facing traffic (Nginx ↔ API Gateway)"
+
+  backend-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+    labels:
+      - "netweave.network=backend"
+      - "netweave.description=Internal microservice communication"
+
+  db-net:
+    driver: bridge
+    internal: true  # 🔒 No external internet access — security isolation!
+    ipam:
+      config:
+        - subnet: 172.22.0.0/16
+    labels:
+      - "netweave.network=database"
+      - "netweave.description=Database isolation — no internet access"
+
+  db-admin-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.24.0.0/16
+    labels:
+      - "netweave.network=db-admin"
+      - "netweave.description=Host access for MongoDB Compass (dev only)"
+
+  monitor-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.23.0.0/16
+    labels:
+      - "netweave.network=monitoring"
+      - "netweave.description=Monitoring and visualization tools"
+
+# ============================================================================
+# VOLUMES — Persistent data storage
+# ============================================================================
+volumes:
+  users-db-data:
+    labels:
+      - "netweave.volume=users-database"
+  orders-db-data:
+    labels:
+      - "netweave.volume=orders-database"
+  redis-data:
+    labels:
+      - "netweave.volume=redis-cache"
+  prometheus-data:
+    labels:
+      - "netweave.volume=prometheus-metrics"
+  grafana-data:
+    labels:
+      - "netweave.volume=grafana-dashboards"
+
+# ============================================================================
+# SERVICES — 11 containers
+# ============================================================================
+services:
+
+  # --------------------------------------------------------------------------
+  # 1. NGINX — Reverse Proxy & Landing Page
+  # Network: frontend-net ONLY
+  # --------------------------------------------------------------------------
+  nginx:
+    build:
+      context: ./services/nginx
+      dockerfile: Dockerfile
+    container_name: netweave-nginx
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    networks:
+      - frontend-net
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    labels:
+      - "netweave.service=nginx"
+      - "netweave.role=reverse-proxy"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
+  # --------------------------------------------------------------------------
+  # 2. API GATEWAY — Routes requests to microservices
+  # Network: frontend-net + backend-net (BRIDGES two networks!)
+  # --------------------------------------------------------------------------
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: netweave-api-gateway
+    environment:
+      - PORT=${API_GATEWAY_PORT:-3000}
+      - USER_SERVICE_URL=http://user-service:${USER_SERVICE_PORT:-5000}
+      - ORDER_SERVICE_URL=http://order-service:${ORDER_SERVICE_PORT:-4000}
+      - NODE_ENV=production
+    networks:
+      - frontend-net
+      - backend-net
+      - monitor-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${API_GATEWAY_PORT:-3000}/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    labels:
+      - "netweave.service=api-gateway"
+      - "netweave.role=router"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.50"
+
+  # --------------------------------------------------------------------------
+  # 3. USER SERVICE — User CRUD (Python/Flask)
+  # Network: backend-net + db-net
+  # --------------------------------------------------------------------------
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    container_name: netweave-user-service
+    environment:
+      - PORT=${USER_SERVICE_PORT:-5000}
+      - MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@users-db:27017/${MONGO_USERS_DB}?authSource=admin
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis-cache:6379/0
+    networks:
+      - backend-net
+      - db-net
+      - monitor-net
+    depends_on:
+      users-db:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${USER_SERVICE_PORT:-5000}/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    labels:
+      - "netweave.service=user-service"
+      - "netweave.role=microservice"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.50"
+
+  # --------------------------------------------------------------------------
+  # 4. ORDER SERVICE — Order CRUD (Node.js)
+  # Network: backend-net + db-net
+  # --------------------------------------------------------------------------
+  order-service:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile
+    container_name: netweave-order-service
+    environment:
+      - PORT=${ORDER_SERVICE_PORT:-4000}
+      - MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@orders-db:27017/${MONGO_ORDERS_DB}?authSource=admin
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis-cache:6379/1
+      - USER_SERVICE_URL=http://user-service:${USER_SERVICE_PORT:-5000}
+    networks:
+      - backend-net
+      - db-net
+      - monitor-net
+    depends_on:
+      orders-db:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${ORDER_SERVICE_PORT:-4000}/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    labels:
+      - "netweave.service=order-service"
+      - "netweave.role=microservice"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.50"
+
+  # --------------------------------------------------------------------------
+  # 5. USERS DATABASE — MongoDB
+  # Network: db-net ONLY (🔒 isolated, no internet)
+  # --------------------------------------------------------------------------
+  users-db:
+    image: mongo:7
+    container_name: netweave-users-db
+    ports:
+      - "${MONGO_USERS_PORT:-27017}:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_USERS_DB}
+    volumes:
+      - users-db-data:/data/db
+    networks:
+      - db-net
+      - db-admin-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    labels:
+      - "netweave.service=users-db"
+      - "netweave.role=database"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.50"
+
+  # --------------------------------------------------------------------------
+  # 6. ORDERS DATABASE — MongoDB
+  # Network: db-net ONLY (🔒 isolated, no internet)
+  # --------------------------------------------------------------------------
+  orders-db:
+    image: mongo:7
+    container_name: netweave-orders-db
+    ports:
+      - "${MONGO_ORDERS_PORT:-27018}:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_ORDERS_DB}
+    volumes:
+      - orders-db-data:/data/db
+    networks:
+      - db-net
+      - db-admin-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    labels:
+      - "netweave.service=orders-db"
+      - "netweave.role=database"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.50"
+
+  # --------------------------------------------------------------------------
+  # 7. REDIS CACHE
+  # Network: db-net ONLY (🔒 isolated, no internet)
+  # --------------------------------------------------------------------------
+  redis-cache:
+    image: redis:7-alpine
+    container_name: netweave-redis-cache
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - db-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    labels:
+      - "netweave.service=redis-cache"
+      - "netweave.role=cache"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
+  # --------------------------------------------------------------------------
+  # 8. PROMETHEUS — Metrics Collection
+  # Network: monitor-net
+  # --------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: netweave-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - monitor-net
+      - backend-net
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    labels:
+      - "netweave.service=prometheus"
+      - "netweave.role=monitoring"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.50"
+
+  # --------------------------------------------------------------------------
+  # 9. GRAFANA — Visualization Dashboards
+  # Network: monitor-net
+  # --------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: netweave-grafana
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:${GRAFANA_PORT:-3001}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - monitor-net
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    labels:
+      - "netweave.service=grafana"
+      - "netweave.role=visualization"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.50"
+
+  # --------------------------------------------------------------------------
+  # 10. cADVISOR — Container Metrics Exporter
+  # Network: monitor-net
+  # --------------------------------------------------------------------------
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: netweave-cadvisor
+    ports:
+      - "${CADVISOR_PORT:-8081}:8080"
+    command:
+      - '--docker_only=true'
+      - '--store_container_labels=true'
+      - '--housekeeping_interval=10s'
+    volumes:
+      - //var/run/docker.sock:/var/run/docker.sock:ro
+      - //sys:/sys:ro
+      - //var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - monitor-net
+    restart: unless-stopped
+    labels:
+      - "netweave.service=cadvisor"
+      - "netweave.role=metrics-exporter"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+
+  # --------------------------------------------------------------------------
+  # 11. NETWORK DASHBOARD — Topology Visualization
+  # Network: monitor-net
+  # --------------------------------------------------------------------------
+  dashboard:
+    build:
+      context: ./services/dashboard
+      dockerfile: Dockerfile
+    container_name: netweave-dashboard
+    ports:
+      - "${DASHBOARD_PORT:-8080}:80"
+    networks:
+      - monitor-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    labels:
+      - "netweave.service=dashboard"
+      - "netweave.role=visualization"
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.10"
